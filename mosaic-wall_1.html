@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mosaic Wall</title>
+<style>
+  @import url('https://cdnjs.cloudflare.com/ajax/libs/space-grotesk/1.0.0/index.css') ;
+  :root{
+    --bg: #08090b;
+    --panel-bg: rgba(16,18,22,0.74);
+    --panel-border: rgba(255,255,255,0.08);
+    --text: #E7E9EA;
+    --muted: #868D96;
+    --accent: #5EEAD4;
+    --accent-dim: rgba(94,234,212,0.18);
+    --danger: #E8735C;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    --display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    --body: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background: var(--bg);
+    font-family: var(--body);
+    color: var(--text);
+    overflow:hidden;
+  }
+
+  /* ---------- Mosaic grid ---------- */
+  #mosaic{
+    position:fixed; inset:0;
+    background: #000;
+    overflow:hidden;
+  }
+  .tile{
+    position:absolute;
+    overflow:hidden;
+    background:#000;
+    isolation:isolate;
+    border-radius: 2px;
+    opacity: 0;
+    transform: scale(0.94);
+    transform-origin: 50% 50%;
+    transition: opacity 550ms ease, transform 550ms cubic-bezier(.22,.9,.32,1), box-shadow 380ms ease;
+    cursor: zoom-in;
+    box-shadow: 0 10px 30px -8px rgba(0,0,0,0.55);
+  }
+  .tile.placed{ opacity: 1; transform: scale(1); }
+  .tile.zoomed{
+    transform: scale(1.55) !important;
+    z-index: 999999 !important;
+    box-shadow: 0 30px 80px -12px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.09);
+  }
+  .tile .layer{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:cover;
+    opacity:1;
+  }
+
+  /* ---------- Empty state ---------- */
+  #empty-state{
+    position:fixed; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap: 18px;
+    text-align:center;
+    padding: 24px;
+  }
+  #empty-state.hidden{ display:none; }
+  #empty-state h1{
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: clamp(26px, 4vw, 40px);
+    letter-spacing: -0.01em;
+    margin:0;
+  }
+  #empty-state p{
+    color: var(--muted);
+    max-width: 420px;
+    line-height:1.5;
+    margin:0;
+    font-size: 14px;
+  }
+  .signature-mark{
+    width:64px; height:64px;
+    display:grid;
+    grid-template-columns: repeat(3,1fr);
+    grid-template-rows: repeat(3,1fr);
+    gap:3px;
+    opacity:0.9;
+  }
+  .signature-mark span{
+    background: var(--accent-dim);
+    border: 1px solid rgba(94,234,212,0.35);
+    animation: pulseCell 3.6s ease-in-out infinite;
+  }
+  .signature-mark span:nth-child(2){ animation-delay:.3s; }
+  .signature-mark span:nth-child(4){ animation-delay:.9s; }
+  .signature-mark span:nth-child(5){ animation-delay:.15s; background:var(--accent); border-color:var(--accent);}
+  .signature-mark span:nth-child(6){ animation-delay:1.2s; }
+  .signature-mark span:nth-child(8){ animation-delay:.6s; }
+  @keyframes pulseCell{
+    0%,100%{ opacity:.35; }
+    50%{ opacity:1; }
+  }
+
+  button.primary{
+    font-family: var(--body);
+    font-weight:600;
+    font-size:13.5px;
+    background: var(--accent);
+    color:#04211d;
+    border:none;
+    padding: 11px 20px;
+    border-radius: 8px;
+    cursor:pointer;
+    letter-spacing:0.01em;
+  }
+  button.primary:hover{ filter:brightness(1.08); }
+  button.primary:active{ transform: translateY(1px); }
+
+  /* ---------- Control panel ---------- */
+  #panel-toggle{
+    position:fixed; top:18px; right:18px; z-index:50;
+    width:38px; height:38px;
+    border-radius:50%;
+    background: var(--panel-bg);
+    border:1px solid var(--panel-border);
+    backdrop-filter: blur(10px);
+    color: var(--text);
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: opacity 400ms ease, background 200ms;
+  }
+  #panel-toggle:hover{ background: rgba(30,33,39,0.85); }
+  #panel-toggle svg{ width:17px; height:17px; }
+
+  #panel{
+    position:fixed; top:18px; right:66px; z-index:49;
+    width: 296px;
+    background: var(--panel-bg);
+    border:1px solid var(--panel-border);
+    backdrop-filter: blur(14px);
+    border-radius: 14px;
+    padding: 18px 18px 16px;
+    transition: opacity 300ms ease, transform 300ms ease;
+    font-size: 13px;
+  }
+  #panel.hidden{
+    opacity:0;
+    transform: translateX(8px);
+    pointer-events:none;
+  }
+  #panel h2{
+    font-family: var(--display);
+    font-size: 15px;
+    font-weight:600;
+    margin: 0 0 3px;
+    letter-spacing:-0.01em;
+  }
+  #panel .sub{
+    color: var(--muted);
+    font-size: 11.5px;
+    margin: 0 0 16px;
+    line-height:1.4;
+  }
+  .field{ margin-bottom: 14px; }
+  .field label{
+    display:block;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 6px;
+  }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  input[type="number"]{
+    width:100%;
+    background: rgba(255,255,255,0.04);
+    border:1px solid var(--panel-border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 7px;
+  }
+  input[type="number"]:focus{
+    outline:none;
+    border-color: var(--accent);
+  }
+  .btn-row{ display:flex; gap:8px; margin-top: 4px; }
+  button.ghost{
+    flex:1;
+    background: rgba(255,255,255,0.05);
+    border:1px solid var(--panel-border);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 12.5px;
+    font-weight:500;
+    padding: 9px 8px;
+    border-radius: 7px;
+    cursor:pointer;
+  }
+  button.ghost:hover{ background: rgba(255,255,255,0.09); }
+  button.ghost.active{
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .toggle-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 2px 0;
+  }
+  .switch{
+    width: 34px; height: 20px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 999px;
+    position:relative;
+    cursor:pointer;
+    border: 1px solid var(--panel-border);
+  }
+  .switch .knob{
+    position:absolute; top:1px; left:1px;
+    width:16px; height:16px;
+    border-radius:50%;
+    background: var(--muted);
+    transition: transform 180ms ease, background 180ms ease;
+  }
+  .switch.on{ background: var(--accent-dim); border-color: rgba(94,234,212,.4); }
+  .switch.on .knob{ transform: translateX(14px); background: var(--accent); }
+
+  hr.div{
+    border:none; border-top:1px solid var(--panel-border);
+    margin: 14px 0;
+  }
+  #counter{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    letter-spacing:.02em;
+  }
+  #counter b{ color: var(--accent); font-weight:600; }
+  #counter-bar{
+    height:3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow:hidden;
+    margin-top:8px;
+  }
+  #counter-bar-fill{
+    height:100%;
+    width:0%;
+    background: var(--accent);
+    transition: width 400ms ease;
+  }
+  #folder-name{
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    margin-top:6px;
+  }
+  .hint{
+    font-size: 10.5px;
+    color: var(--muted);
+    margin-top: 8px;
+    line-height:1.4;
+  }
+  #fallback-input{ display:none; }
+</style>
+</head>
+<body>
+
+  <div id="mosaic"></div>
+
+  <div id="empty-state">
+    <div class="signature-mark" aria-hidden="true">
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+    </div>
+    <h1>Mosaic Wall</h1>
+    <p>Point this at a folder of photos and videos. It fills the screen right away, then new pieces arrive one at a time — each shown at its own true aspect ratio, never cropped or letterboxed — landing wherever there's room. No repeats until everything's had a turn. Hover any tile to zoom in.</p>
+    <button class="primary" id="pick-folder-btn">Choose folder…</button>
+    <p class="hint" style="max-width:320px;">Runs entirely on this device. Nothing is uploaded anywhere.</p>
+  </div>
+
+  <input type="file" id="fallback-input" webkitdirectory directory multiple />
+
+  <button id="panel-toggle" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3.2"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  </button>
+
+  <div id="panel" class="hidden">
+    <h2>Mosaic Wall</h2>
+    <p class="sub">Local playback controls</p>
+
+    <div class="field">
+      <label>Initial tiles</label>
+      <input type="number" id="tile-count-input" min="4" max="60" value="16" />
+    </div>
+
+    <div class="field">
+      <label>Speed (seconds between new arrivals)</label>
+      <input type="number" id="interval-input" min="0.5" max="60" step="0.5" value="2" />
+    </div>
+
+    <div class="toggle-row field">
+      <label style="margin:0;">Sound</label>
+      <div class="switch" id="sound-switch" role="switch" aria-checked="false">
+        <div class="knob"></div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="ghost" id="reshuffle-btn">Reshuffle</button>
+      <button class="ghost" id="fullscreen-btn">Fullscreen</button>
+    </div>
+    <div class="btn-row">
+      <button class="ghost" id="change-folder-btn">Change folder…</button>
+    </div>
+
+    <hr class="div" />
+
+    <div id="folder-name">No folder loaded</div>
+    <div id="counter"><span>Pass progress</span><b id="counter-text">0 / 0</b></div>
+    <div id="counter-bar"><div id="counter-bar-fill"></div></div>
+    <p class="hint" id="support-hint"></p>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  const IMAGE_EXT = ["jpg","jpeg","png","gif","webp","avif","bmp","svg"];
+  const VIDEO_EXT  = ["mp4","webm","ogg","ogv","mov","m4v"];
+
+  const els = {
+    mosaic: document.getElementById("mosaic"),
+    emptyState: document.getElementById("empty-state"),
+    pickFolderBtn: document.getElementById("pick-folder-btn"),
+    changeFolderBtn: document.getElementById("change-folder-btn"),
+    fallbackInput: document.getElementById("fallback-input"),
+    panel: document.getElementById("panel"),
+    panelToggle: document.getElementById("panel-toggle"),
+    tileCountInput: document.getElementById("tile-count-input"),
+    intervalInput: document.getElementById("interval-input"),
+    soundSwitch: document.getElementById("sound-switch"),
+    reshuffleBtn: document.getElementById("reshuffle-btn"),
+    fullscreenBtn: document.getElementById("fullscreen-btn"),
+    folderName: document.getElementById("folder-name"),
+    counterText: document.getElementById("counter-text"),
+    counterBarFill: document.getElementById("counter-bar-fill"),
+    supportHint: document.getElementById("support-hint"),
+  };
+
+  const supportsFSAccess = "showDirectoryPicker" in window;
+  els.supportHint.textContent = supportsFSAccess
+    ? "Folder access is remembered between visits on this browser."
+    : "This browser can't remember folder access — you'll reselect the folder each time you open this file.";
+
+  // ---------------- State ----------------
+  const state = {
+    files: [],          // {url, kind, name}
+    deck: [],
+    deckPos: 0,
+    initialCount: 16,     // tiles spawned immediately to fill the screen
+    arrivalIntervalSec: 2, // pace of ongoing one-at-a-time arrivals after the initial fill
+    muted: true,
+    generation: 0,         // bumped on every reset, invalidates in-flight async loads/timers
+    arrivalTimerId: null,
+    allLayers: [],         // every currently-in-DOM media element, oldest first (for pruning)
+    playingVideos: new Set(), // videos currently mid-playback — never pruned out from under themselves
+    coverage: [],           // staleness grid for placement
+    placeCounter: 0,
+    folderLabel: "",
+  };
+
+  // ---------------- Deck (shuffle-bag: every file plays once before any repeat) ----------------
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function buildDeck() {
+    state.deck = shuffle(state.files.map((_, i) => i));
+    state.deckPos = 0;
+    updateCounter();
+  }
+
+  function nextFileIndex() {
+    if (state.files.length === 0) return null;
+    if (state.deckPos >= state.deck.length) {
+      buildDeck();
+    }
+    const idx = state.deck[state.deckPos++];
+    updateCounter();
+    return idx;
+  }
+
+  function updateCounter() {
+    const total = state.files.length;
+    els.counterText.textContent = `${state.deckPos} / ${total}`;
+    els.counterBarFill.style.width = total ? `${(state.deckPos / total) * 100}%` : "0%";
+  }
+
+  // ---------------- Collage placement ----------------
+  // Instead of tiling the screen edge-to-edge, every tile is sized to
+  // EXACTLY match its own content's aspect ratio — so there is never any
+  // letterboxing, on any screen shape — and placed wherever the wall has
+  // gone longest without being covered. Older tiles are simply left in
+  // place until something new happens to land on top of them.
+  const COVERAGE_COLS = 24, COVERAGE_ROWS = 14; // proxy grid, independent of real resolution
+  const PLACEMENT_CANDIDATES = 10;
+
+  function resetCoverage() {
+    state.coverage = new Array(COVERAGE_COLS * COVERAGE_ROWS).fill(0);
+    state.placeCounter = 0;
+  }
+
+  function coverageCells(xPct, yPct, wPct, hPct) {
+    const c0 = Math.max(0, Math.floor(xPct / 100 * COVERAGE_COLS));
+    const c1 = Math.min(COVERAGE_COLS - 1, Math.floor((xPct + wPct) / 100 * COVERAGE_COLS));
+    const r0 = Math.max(0, Math.floor(yPct / 100 * COVERAGE_ROWS));
+    const r1 = Math.min(COVERAGE_ROWS - 1, Math.floor((yPct + hPct) / 100 * COVERAGE_ROWS));
+    const cells = [];
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells.push(r * COVERAGE_COLS + c);
+    return cells;
+  }
+
+  function pickPlacement(wPct, hPct) {
+    const maxX = Math.max(0, 100 - wPct), maxY = Math.max(0, 100 - hPct);
+    let best = null, bestScore = -Infinity;
+    for (let i = 0; i < PLACEMENT_CANDIDATES; i++) {
+      const x = Math.random() * maxX, y = Math.random() * maxY;
+      const cells = coverageCells(x, y, wPct, hPct);
+      let score = 0;
+      for (const c of cells) score += (state.placeCounter - state.coverage[c]);
+      score /= cells.length || 1;
+      if (score > bestScore) { bestScore = score; best = { x, y }; }
+    }
+    return best || { x: 0, y: 0 };
+  }
+
+  function markCovered(xPct, yPct, wPct, hPct) {
+    state.placeCounter++;
+    for (const c of coverageCells(xPct, yPct, wPct, hPct)) state.coverage[c] = state.placeCounter;
+  }
+
+  // Given the media's real aspect ratio, size it exactly to match (never
+  // cropped or letterboxed) with some organic size variety, then find a
+  // good spot for it.
+  function computeSizeAndPosition(ratio) {
+    const cw = els.mosaic.clientWidth || window.innerWidth;
+    const ch = els.mosaic.clientHeight || window.innerHeight;
+    const fairAreaFraction = 1 / Math.max(4, state.initialCount);
+    const areaFraction = Math.min(0.24, Math.max(0.035, fairAreaFraction * (0.7 + Math.random() * 0.9)));
+    const areaPx = areaFraction * cw * ch;
+    let hPx = Math.sqrt(areaPx / ratio);
+    let wPx = hPx * ratio;
+    // keep any single tile from ever dominating the screen
+    const scale = Math.min(1, (cw * 0.6) / wPx, (ch * 0.6) / hPx);
+    wPx *= scale; hPx *= scale;
+    const wPct = Math.min(96, (wPx / cw) * 100);
+    const hPct = Math.min(96, (hPx / ch) * 100);
+    const pos = pickPlacement(wPct, hPct);
+    return { xPct: pos.x, yPct: pos.y, wPct, hPct };
+  }
+
+  // Removes the oldest retired layers once the DOM has accumulated more
+  // than the cap — a video still mid-playback is never pruned out from
+  // under itself.
+  function pruneOldLayers() {
+    const cap = Math.max(40, state.initialCount * 5);
+    let i = 0;
+    while (state.allLayers.length - i > cap) {
+      const el = state.allLayers[i];
+      if (state.playingVideos.has(el)) { i++; continue; }
+      if (el.tagName === "VIDEO") { el.pause(); el.removeAttribute("src"); el.load(); }
+      if (el.parentElement) el.parentElement.remove();
+      state.allLayers.splice(i, 1);
+    }
+  }
+
+  function teardownAll() {
+    clearTimeout(state.arrivalTimerId);
+    state.generation++; // invalidate any in-flight async loads/timers
+    state.allLayers.forEach(el => {
+      if (el.tagName === "VIDEO") { el.pause(); el.removeAttribute("src"); el.load(); }
+    });
+    state.allLayers = [];
+    state.playingVideos.clear();
+    els.mosaic.innerHTML = "";
+    resetCoverage();
+  }
+
+  // Hovering a tile scales it up in place, biasing the zoom origin away
+  // from the nearest screen edge so the enlarged tile stays mostly on
+  // screen. Tiles have no per-item timer to pause anymore — they just sit
+  // on the wall until something else covers them.
+  function attachHoverHandlers(tileEl) {
+    tileEl.addEventListener("pointerenter", () => {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const b = tileEl.getBoundingClientRect();
+      const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+      const originX = Math.min(85, Math.max(15, (cx / vw) * 100));
+      const originY = Math.min(85, Math.max(15, (cy / vh) * 100));
+      tileEl.style.transformOrigin = `${originX}% ${originY}%`;
+      tileEl.classList.add("zoomed");
+    });
+    tileEl.addEventListener("pointerleave", () => tileEl.classList.remove("zoomed"));
+  }
+
+  function createLayerFor(file) {
+    let el;
+    if (file.kind === "video") {
+      el = document.createElement("video");
+      el.muted = state.muted;
+      el.playsInline = true;
+      el.preload = "auto";
+      el.src = file.url;
+    } else {
+      el = document.createElement("img");
+      el.decoding = "async";
+      el.loading = "eager";
+      el.src = file.url;
+    }
+    el.className = "layer";
+    return el;
+  }
+
+  // Spawns exactly one new tile: pick the next file from the shuffle-bag,
+  // size it to its own true ratio once it loads, and place it wherever the
+  // wall has gone longest uncovered. Completely decoupled from any other
+  // tile's timing — images just sit there once placed, videos autoplay
+  // once and freeze on their last frame, and neither one schedules
+  // anything further. Only the single arrival stream (see
+  // scheduleNextArrival) decides when the next tile appears.
+  function spawnOne() {
+    const idx = nextFileIndex();
+    if (idx === null) return;
+    const file = state.files[idx];
+    const gen = state.generation;
+    const layer = createLayerFor(file);
+    const tileEl = document.createElement("div"); // stays unplaced/off-DOM until size is known
+    tileEl.className = "tile";
+    tileEl.appendChild(layer);
+
+    const settle = () => {
+      if (gen !== state.generation) { tileEl.remove(); return; }
+      let ratio = 16 / 9;
+      if (layer.tagName === "IMG" && layer.naturalWidth && layer.naturalHeight) {
+        ratio = layer.naturalWidth / layer.naturalHeight;
+      } else if (layer.tagName === "VIDEO" && layer.videoWidth && layer.videoHeight) {
+        ratio = layer.videoWidth / layer.videoHeight;
+      }
+      const { xPct, yPct, wPct, hPct } = computeSizeAndPosition(ratio);
+      tileEl.style.left = `${xPct}%`;
+      tileEl.style.top = `${yPct}%`;
+      tileEl.style.width = `${wPct}%`;
+      tileEl.style.height = `${hPct}%`;
+      markCovered(xPct, yPct, wPct, hPct);
+
+      els.mosaic.appendChild(tileEl);
+      attachHoverHandlers(tileEl);
+      requestAnimationFrame(() => tileEl.classList.add("placed"));
+
+      state.allLayers.push(layer);
+      pruneOldLayers();
+
+      if (file.kind === "video") {
+        state.playingVideos.add(layer);
+        const stopTracking = () => state.playingVideos.delete(layer);
+        layer.addEventListener("ended", stopTracking, { once: true });
+        layer.addEventListener("error", stopTracking, { once: true });
+        const p = layer.play();
+        if (p && p.catch) p.catch(() => { /* autoplay blocked; will just sit muted-paused */ });
+      }
+    };
+
+    if (file.kind === "image") {
+      if (layer.complete) settle(); else layer.addEventListener("load", settle, { once: true });
+      layer.addEventListener("error", () => { tileEl.remove(); }, { once: true });
+    } else {
+      layer.addEventListener("loadeddata", settle, { once: true });
+      layer.addEventListener("error", () => { tileEl.remove(); }, { once: true });
+    }
+  }
+
+  // The single global pace-setter: after each arrival, wait ~arrivalIntervalSec
+  // (with jitter, so it never feels metronomic) and spawn the next one.
+  function scheduleNextArrival() {
+    clearTimeout(state.arrivalTimerId);
+    const gen = state.generation;
+    const jitter = 0.75 + Math.random() * 0.5;
+    const delay = Math.max(200, state.arrivalIntervalSec * 1000 * jitter);
+    state.arrivalTimerId = setTimeout(() => {
+      if (gen !== state.generation) return;
+      spawnOne();
+      scheduleNextArrival();
+    }, delay);
+  }
+
+  function initGrid() {
+    teardownAll();
+    if (state.files.length === 0) return;
+    const gen = state.generation;
+    // Fill the screen quickly with the starting batch, lightly staggered so
+    // it feels like it's filling in rather than popping in all at once.
+    for (let i = 0; i < state.initialCount; i++) {
+      const delay = Math.random() * Math.min(1600, state.initialCount * 90);
+      setTimeout(() => { if (gen === state.generation) spawnOne(); }, delay);
+    }
+    // Ongoing one-at-a-time arrivals kick in once the initial fill has had
+    // a moment to land.
+    const firstArrivalDelay = Math.min(2200, state.initialCount * 90) + state.arrivalIntervalSec * 500;
+    setTimeout(() => { if (gen === state.generation) scheduleNextArrival(); }, firstArrivalDelay);
+  }
+
+  function applyMuted() {
+    state.allLayers.forEach(el => { if (el.tagName === "VIDEO") el.muted = state.muted; });
+  }
+
+  // ---------------- Loading files ----------------
+  function extKind(name) {
+    const ext = name.split(".").pop().toLowerCase();
+    if (IMAGE_EXT.includes(ext)) return "image";
+    if (VIDEO_EXT.includes(ext)) return "video";
+    return null;
+  }
+
+  function filesFromFileList(fileList) {
+    const out = [];
+    for (const f of fileList) {
+      const kind = extKind(f.name);
+      if (kind) out.push({ url: URL.createObjectURL(f), kind, name: f.name });
+    }
+    return out;
+  }
+
+  async function filesFromDirHandle(handle) {
+    const out = [];
+    async function walk(dirHandle) {
+      for await (const [name, entry] of dirHandle.entries()) {
+        if (entry.kind === "file") {
+          const kind = extKind(name);
+          if (kind) {
+            const file = await entry.getFile();
+            out.push({ url: URL.createObjectURL(file), kind, name });
+          }
+        }
+        // not recursing into subfolders by default — keeps scope predictable
+      }
+    }
+    await walk(handle);
+    return out;
+  }
+
+  function onFilesLoaded(files, label) {
+    if (files.length === 0) {
+      alert("No supported images or videos found in that folder.");
+      return;
+    }
+    state.files = files;
+    state.folderLabel = label || "";
+    els.folderName.textContent = label ? `${label} — ${files.length} files` : `${files.length} files`;
+    buildDeck();
+    els.emptyState.classList.add("hidden");
+    initGrid();
+  }
+
+  // ---------------- Folder picking (File System Access API + persistence) ----------------
+  const DB_NAME = "mosaic-wall";
+  const STORE = "handles";
+
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function idbSet(key, val) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put(val, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function idbGet(key) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const req = tx.objectStore(STORE).get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function pickFolder() {
+    if (supportsFSAccess) {
+      try {
+        const handle = await window.showDirectoryPicker();
+        await idbSet("lastHandle", handle);
+        const files = await filesFromDirHandle(handle);
+        onFilesLoaded(files, handle.name);
+      } catch (err) {
+        if (err.name !== "AbortError") console.error(err);
+      }
+    } else {
+      els.fallbackInput.click();
+    }
+  }
+
+  els.fallbackInput.addEventListener("change", (e) => {
+    const files = filesFromFileList(e.target.files);
+    let label = "";
+    if (e.target.files.length && e.target.files[0].webkitRelativePath) {
+      label = e.target.files[0].webkitRelativePath.split("/")[0];
+    }
+    onFilesLoaded(files, label);
+  });
+
+  async function tryRestoreLastFolder() {
+    if (!supportsFSAccess) return;
+    try {
+      const handle = await idbGet("lastHandle");
+      if (!handle) return;
+      const perm = await handle.queryPermission({ mode: "read" });
+      if (perm === "granted") {
+        const files = await filesFromDirHandle(handle);
+        onFilesLoaded(files, handle.name);
+      } else {
+        // Show a one-click reconnect affordance instead of auto-loading
+        els.pickFolderBtn.textContent = `Reconnect “${handle.name}”…`;
+        els.pickFolderBtn.onclick = async () => {
+          const p = await handle.requestPermission({ mode: "read" });
+          if (p === "granted") {
+            const files = await filesFromDirHandle(handle);
+            onFilesLoaded(files, handle.name);
+          }
+          els.pickFolderBtn.onclick = pickFolder;
+          els.pickFolderBtn.textContent = "Choose folder…";
+        };
+      }
+    } catch (err) {
+      console.warn("Could not restore folder handle", err);
+    }
+  }
+
+  els.pickFolderBtn.addEventListener("click", pickFolder);
+  els.changeFolderBtn.addEventListener("click", pickFolder);
+
+  // ---------------- Controls ----------------
+  els.tileCountInput.addEventListener("change", () => {
+    state.initialCount = Math.max(4, Math.min(60, parseInt(els.tileCountInput.value) || 16));
+    if (state.files.length) initGrid();
+  });
+  els.intervalInput.addEventListener("change", () => {
+    state.arrivalIntervalSec = Math.max(0.5, parseFloat(els.intervalInput.value) || 2);
+    if (state.files.length) scheduleNextArrival(); // apply the new pace right away, not next cycle
+  });
+  els.soundSwitch.addEventListener("click", () => {
+    state.muted = !state.muted;
+    els.soundSwitch.classList.toggle("on", !state.muted);
+    els.soundSwitch.setAttribute("aria-checked", String(!state.muted));
+    applyMuted();
+  });
+  els.reshuffleBtn.addEventListener("click", () => {
+    if (state.files.length) { buildDeck(); initGrid(); }
+  });
+  els.fullscreenBtn.addEventListener("click", () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    else document.exitFullscreen();
+  });
+
+  // ---------------- Panel show/hide ----------------
+  let panelOpen = false;
+  function setPanelOpen(open) {
+    panelOpen = open;
+    els.panel.classList.toggle("hidden", !open);
+  }
+  els.panelToggle.addEventListener("click", () => setPanelOpen(!panelOpen));
+  setPanelOpen(true);
+
+  let idleTimer = null;
+  function resetIdle() {
+    document.body.style.cursor = "";
+    els.panelToggle.style.opacity = "1";
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (!panelOpen) { els.panelToggle.style.opacity = "0.25"; document.body.style.cursor = "none"; }
+    }, 3500);
+  }
+  window.addEventListener("mousemove", resetIdle);
+  window.addEventListener("touchstart", resetIdle);
+  resetIdle();
+
+  // ---------------- Init ----------------
+  tryRestoreLastFolder();
+})();
+</script>
+</body>
+</html>
